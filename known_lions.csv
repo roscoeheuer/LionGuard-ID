@@ -1,0 +1,20 @@
+lion_id,lion_name,sex,general_description,whisker_pattern_description,whisker_pattern_image,reference_image,all_reference_images_folder
+L0001,Apua,Female,Borana pride. 2 left and right ear notches.,21 whiskers on left and 5 whiskers on right,known_lion_images/Apua/Apua.jpg,known_lion_images/Apua/Apua left.JPG,known_lion_images/Apua
+L0002,Jalalo,Female,3+ left ear notches and none on the right.,"5 rows on the left, heavily concentrated on upper row",,known_lion_images/Jalalo/DSC_0346.jpg,known_lion_images/Jalalo
+L0003,Kofafeth,Female,Small notch on upper right ear and 1 larger cut.,4 rows of whiskers on each side. More whiskers on left.,,known_lion_images/Kofafeth/Kofafeth left.JPG,known_lion_images/Kofafeth
+L0004,Ldarlei,Male,Two distinct cuts on front left leg. Markings beside nose.,,,known_lion_images/Ldarlei/_DSC1487.jpg,known_lion_images/Ldarlei
+L0005,Lenkanyit,Male,Younger male.,,,known_lion_images/Lenkanyit/_DSC2446.jpg,known_lion_images/Lenkanyit
+L0006,Lguret,Male,Younger male. 2 left ear notches. Cut behind right ear.,5 rows on right side.,,known_lion_images/Lguret/Lguret front.JPG,known_lion_images/Lguret
+L0007,Loeku,Male,Younger male. Lower left ear notch.,4 rows on both sides.,,known_lion_images/Loeku/DSC_2257.jpg,known_lion_images/Loeku
+L0008,Loirish,Male,Younger male. 2 notches on right ear. Top front notch.,,,known_lion_images/Loirish/Loirish Front.jpg,known_lion_images/Loirish
+L0009,Lolotu,Male,2 notches on left ear. Mark below left eye.,,,known_lion_images/Lolotu/_DSC1178.jpg,known_lion_images/Lolotu
+L0010,Nabo,Female,2 notches on right ear. 1 notch on left ear.,4 rows of whiskers on each side.,,known_lion_images/Nabo/Nabo front.jpg,known_lion_images/Nabo
+L0011,Nabulo,Female,2 notches on left ear. 1 notch on lower right ear.,5 rows of whiskers on left side.,,known_lion_images/Nabulo/Nabulo left.jpg,known_lion_images/Nabulo
+L0012,Namunyak,Female,3 notches on each side.,5 rows of whiskers on both sides. Thick and long.,,known_lion_images/Namunyak/DSC_2658.jpg,known_lion_images/Namunyak
+L0013,Nanai,Female,1 large parallel notch on each side.,5 rows of whiskers on both sides.,,known_lion_images/Nanai/Nanai front.JPG,known_lion_images/Nanai
+L0014,Naramat,Female,Used to track her movement. 2 notches on left.,4 rows of whiskers on each side.,,known_lion_images/Naramat/DSC_4469.jpg,known_lion_images/Naramat
+L0015,Naserian,Female,Large cut on nose. 1 notch lower right ear.,4 rows of whiskers on each side.,,known_lion_images/Naserian/DSC_1406.JPG,known_lion_images/Naserian
+L0016,Sipen,Female,1 parallel ear notch on each ear.,5 rows of whiskers on both sides. Long eyebrows.,,known_lion_images/Sipen/Sipen right.JPG,known_lion_images/Sipen
+L0017,Tapatu,Female,2 left ear notches.,4 rows on left side.,,known_lion_images/Tapatu/Tapatu.jpg,known_lion_images/Tapatu
+L0018,Tisitu,Female,2 left ear notches and 1 right ear notch.,5 rows on right side.,,known_lion_images/Tisitu/DSC_0009.jpg,known_lion_images/Tisitu
+LG019,Nkarsis,Female,Adult lioness with two cubs. Scars all over nose. Currently collared and tracked. ,Faint whiskers on both sides. ,,known_lion_images/Nkarsis/main.jpg,known_lion_images/Nkarsis
