@@ -554,108 +554,77 @@ elif page == "Full Image Archive":
                 st.caption(os.path.basename(img_path))
 
 elif page == "Submit Sighting":
-    page_band("Submit a Sighting", "Upload a lion photo and record key identification details for expert review.")
+    page_band("Submit a Sighting", "Upload a photo and record visible identification details.")
 
-    uploaded = st.file_uploader(
-        "Upload lion photo",
-        type=["jpg", "jpeg", "png"]
-    )
+    uploaded = st.file_uploader("Upload lion photo", type=["jpg", "jpeg", "png"])
 
     if uploaded:
         image = Image.open(uploaded).convert("RGB")
-        st.markdown("<div class='card'>", unsafe_allow_html=True)
-        st.image(image, caption="Uploaded lion sighting photo", use_container_width=True)
-        st.markdown("</div>", unsafe_allow_html=True)
+        img_col, form_col = st.columns([1, 1.4], gap="large")
 
-    st.markdown("### Sighting Details")
+        with img_col:
+            st.markdown("<div class='card'>", unsafe_allow_html=True)
+            st.image(image, use_container_width=True)
+            st.markdown("</div>", unsafe_allow_html=True)
 
-    with st.form("submit_sighting_form"):
-        date_seen = st.date_input("Date seen", value=date.today())
+        with form_col:
+            tab1, tab2, tab3 = st.tabs(["Basic Info", "Identifying Features", "Notes"])
 
-        location = st.text_input(
-            "Location / conservancy / area",
-            placeholder="Example: West Gate, Samburu, Buffalo Springs"
-        )
+            with tab1:
+                date_seen = st.date_input("Date seen", value=date.today())
+                location = st.text_input("Location / conservancy / area")
+                sex = st.selectbox("Sex", ["Unknown", "Male", "Female"])
+                age_class = st.selectbox("Age class", ["Unknown", "Cub", "Subadult", "Adult", "Old adult"])
+                side_visible = st.selectbox("Side visible", ["Unknown", "Left side", "Right side", "Front face", "Both sides", "Rear/body only"])
 
-        sex = st.selectbox(
-            "Gender / Sex",
-            ["Unknown", "Male", "Female"]
-        )
+            with tab2:
+                scars_or_injuries = st.text_area("Scars, injuries, nose or eye marks")
+                ear_notches = st.text_area("Ear notches / ear damage")
+                whisker_spot_notes = st.text_area("Whisker spot pattern notes")
+                mane_description = st.text_area("Mane description")
+                tail_or_body_marks = st.text_area("Tail, coat, or other body markings")
 
-        general_description = st.text_area(
-            "General description",
-            placeholder="Example: adult female, pale coat, scar above right eye, calm behavior"
-        )
+            with tab3:
+                behavior_context = st.text_area("Behavior / context")
+                suspected_lion = st.text_input("Suspected lion name or ID, if any")
+                confidence = st.selectbox("Observer confidence", ["Low", "Medium", "High"])
+                reviewer_notes = st.text_area("Additional notes")
 
-        whisker_pattern = st.text_area(
-            "Whisker pattern notes",
-            placeholder="Example: dense lower whisker spots on left side, missing lower right spot"
-        )
+            if st.button("Save Sighting"):
+                existing = load_submissions()
+                submission_id = len(existing) + 1
+                img_fname = f"submission_{submission_id}_{uploaded.name}"
+                img_path = os.path.join(UPLOAD_FOLDER, img_fname)
 
-        suspected_lion = st.text_input(
-            "Suspected lion name or ID, if known",
-            placeholder="Optional"
-        )
+                with open(img_path, "wb") as f:
+                    f.write(uploaded.getbuffer())
 
-        confidence = st.selectbox(
-            "Observer confidence",
-            ["Low", "Medium", "High"]
-        )
+                new_row = {
+                    "submission_id": submission_id,
+                    "image_path": img_path,
+                    "date_seen": date_seen,
+                    "location": location,
+                    "sex": sex,
+                    "age_class": age_class,
+                    "side_visible": side_visible,
+                    "mane_description": mane_description,
+                    "scars_or_injuries": scars_or_injuries,
+                    "ear_notches": ear_notches,
+                    "whisker_spot_notes": whisker_spot_notes,
+                    "tail_or_body_marks": tail_or_body_marks,
+                    "behavior_context": behavior_context,
+                    "suspected_lion": suspected_lion,
+                    "confidence": confidence,
+                    "reviewer_notes": reviewer_notes,
+                    "expert_final_id": "",
+                    "expert_status": "Pending expert review",
+                }
 
-        additional_notes = st.text_area(
-            "Additional notes",
-            placeholder="Behavior, group size, nearby lions, direction of travel, condition..."
-        )
-
-        submitted = st.form_submit_button("Submit Sighting for Review")
-
-    if submitted:
-        if uploaded is None:
-            st.error("Please upload a lion photo before submitting.")
-        elif not location.strip():
-            st.error("Please enter a location.")
-        elif not general_description.strip() and not whisker_pattern.strip():
-            st.error("Please enter either a general description or whisker pattern notes.")
-        else:
-            existing = load_submissions()
-            submission_id = len(existing) + 1
-
-            img_fname = f"submission_{submission_id}_{uploaded.name}"
-            img_path = os.path.join(UPLOAD_FOLDER, img_fname)
-
-            with open(img_path, "wb") as f:
-                f.write(uploaded.getbuffer())
-
-            new_row = {
-                "submission_id": submission_id,
-                "image_path": img_path,
-                "date_seen": date_seen,
-                "location": location,
-                "sex": sex,
-                "age_class": "",
-                "side_visible": "",
-                "mane_description": general_description,
-                "scars_or_injuries": "",
-                "ear_notches": "",
-                "whisker_spot_notes": whisker_pattern,
-                "tail_or_body_marks": "",
-                "behavior_context": additional_notes,
-                "suspected_lion": suspected_lion,
-                "confidence": confidence,
-                "reviewer_notes": additional_notes,
-                "expert_final_id": "",
-                "expert_status": "Pending expert review",
-            }
-
-            updated = pd.concat(
-                [existing, pd.DataFrame([new_row])],
-                ignore_index=True
-            )
-
-            save_submissions(updated)
-
-            st.success("Sighting submitted and added to the expert review queue.")
-            st.info("Go to Review Queue to confirm or assign this sighting to a known lion.")
+                updated = pd.concat([existing, pd.DataFrame([new_row])], ignore_index=True)
+                save_submissions(updated)
+                st.success("Sighting saved and queued for expert review.")
+    else:
+        st.info("Upload a lion photo to begin.")
 
 elif page == "Review Queue":
     page_band("Review Queue", "Expert review area for submitted lion sightings.")
