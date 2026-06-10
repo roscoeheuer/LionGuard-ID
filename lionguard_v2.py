@@ -71,9 +71,15 @@ section[data-testid="stSidebar"] * { color:white !important; }
 """, unsafe_allow_html=True)
 
 KNOWN_COLUMNS = [
-    "lion_id", "lion_name", "sex", "general_description",
-    "whisker_pattern_description", "whisker_pattern_image",
-    "reference_image", "all_reference_images_folder"
+    "lion_id",
+    "lion_name",
+    "sex",
+    "age,
+    "general_description",
+    "whisker_pattern_description",
+    "whisker_pattern_image",
+    "reference_image",
+    "all_reference_images_folder"
 ]
 
 SUBMISSION_COLUMNS = [
@@ -101,9 +107,14 @@ def load_known_lions():
     ensure_csv(KNOWN_LIONS_CSV, KNOWN_COLUMNS)
     df = pd.read_csv(KNOWN_LIONS_CSV)
     for col in KNOWN_COLUMNS:
-        if col not in df.columns:
+    if col not in df.columns:
+        if col == "age":
+            df[col] = "Unknown"
+        else:
             df[col] = ""
-    return df[KNOWN_COLUMNS]
+
+df["age"] = df["age"].fillna("Unknown")
+df.loc[df["age"].astype(str).str.strip() == "", "age"] = "Unknown"
 
 
 def load_submissions():
@@ -306,8 +317,11 @@ with st.sidebar:
     page = st.radio(
         "Navigate",
         [
-            "Home", "Known Lions", "Lion Profiles", "Identify Lion", "Full Image Archive",
-            "Submit Sighting", "Review Queue", "Add New Lion", "Data Dashboard", "About"
+            "Home", "Known Lions", "Lion Profiles", "Identify Lion",
+            "Full Image Archive", "Submit Sighting",
+            "Review Queue", "Add New Lion",
+            "Edit Lion Profile",
+            "Data Dashboard", "About"
         ],
         label_visibility="collapsed"
     )
@@ -427,7 +441,12 @@ elif page == "Lion Profiles":
 
         with col_info:
             st.title(clean_value(row.get("lion_name", "Unknown Lion")))
-            st.markdown(f"<span class='badge'>{clean_value(row.get('lion_id', ''))}</span><span class='badge'>{clean_value(row.get('sex', 'Unknown'))}</span>", unsafe_allow_html=True)
+            st.markdown(
+                f"<span class='badge'>{clean_value(row.get('lion_id', ''))}</span>"
+                f"<span class='badge'>{clean_value(row.get('sex', 'Unknown'))}</span>"
+                f"<span class='badge'>Age: {clean_value(row.get('age', 'Unknown'))}</span>",
+                unsafe_allow_html=True
+            )
             field("General Description", row.get("general_description", ""))
             field("Whisker Pattern Description", row.get("whisker_pattern_description", ""))
 
@@ -676,6 +695,11 @@ elif page == "Add New Lion":
         lion_name = st.text_input("Lion name", placeholder="Example: Sikiria")
         lion_id = st.text_input("Lion ID", value=suggested_next_id, placeholder="Example: LG019")
         sex = st.selectbox("Sex", ["Unknown", "Male", "Female"])
+        age = st.text_input(
+            "Age",
+            value="Unknown",
+            placeholder="Unknown, Adult, Subadult, Cub, etc."
+        )
 
         general_description = st.text_area(
             "General description",
@@ -737,6 +761,7 @@ elif page == "Add New Lion":
                 "lion_id": clean_lion_id,
                 "lion_name": clean_lion_name,
                 "sex": sex,
+                "age": age,
                 "general_description": general_description,
                 "whisker_pattern_description": whisker_pattern_description,
                 "whisker_pattern_image": "",
@@ -750,6 +775,185 @@ elif page == "Add New Lion":
             st.success(f"{clean_lion_name} has been added to the known lion archive.")
             st.write(f"Photo folder created: `{lion_folder}`")
             st.info("The new lion will appear after you refresh the browser or switch pages. If it does not, stop Streamlit and run it again.")
+elif page == "Edit Lion Profile":
+    page_band(
+        "Edit Lion Profile",
+        "Update lion information, age, descriptions, and reference images."
+    )
+
+    lion_names = known_lions["lion_name"].dropna().tolist()
+
+    if not lion_names:
+        st.warning("No lions available.")
+    else:
+        selected_lion = st.selectbox(
+            "Select lion to edit",
+            lion_names
+        )
+
+        lion_index = known_lions[
+            known_lions["lion_name"] == selected_lion
+        ].index[0]
+
+        row = known_lions.loc[lion_index]
+
+        st.subheader("Current Profile")
+
+        c1, c2 = st.columns([1, 2])
+
+        with c1:
+            show_image(
+                row.get("reference_image", ""),
+                caption="Current Reference Image"
+            )
+
+        with c2:
+            field("Lion ID", row.get("lion_id", ""))
+            field("Name", row.get("lion_name", ""))
+            field("Sex", row.get("sex", ""))
+            field("Age", row.get("age", "Unknown"))
+
+        st.divider()
+
+        st.subheader("Edit Profile")
+
+        with st.form("edit_profile_form"):
+
+            new_id = st.text_input(
+                "Lion ID",
+                value=str(row.get("lion_id", ""))
+            )
+
+            new_name = st.text_input(
+                "Lion Name",
+                value=str(row.get("lion_name", ""))
+            )
+
+            sex_options = ["Unknown", "Male", "Female"]
+
+            current_sex = str(
+                row.get("sex", "Unknown")
+            )
+
+            sex_index = (
+                sex_options.index(current_sex)
+                if current_sex in sex_options
+                else 0
+            )
+
+            new_sex = st.selectbox(
+                "Sex",
+                sex_options,
+                index=sex_index
+            )
+
+            new_age = st.text_input(
+                "Age",
+                value=str(
+                    row.get("age", "Unknown")
+                )
+            )
+
+            new_description = st.text_area(
+                "General Description",
+                value=str(
+                    row.get(
+                        "general_description",
+                        ""
+                    )
+                )
+            )
+
+            new_whiskers = st.text_area(
+                "Whisker Pattern Description",
+                value=str(
+                    row.get(
+                        "whisker_pattern_description",
+                        ""
+                    )
+                )
+            )
+
+            uploaded_photos = st.file_uploader(
+                "Add New Photos",
+                type=["jpg", "jpeg", "png"],
+                accept_multiple_files=True
+            )
+
+            save_changes = st.form_submit_button(
+                "Save Profile Changes"
+            )
+
+        if save_changes:
+
+            known_lions.loc[
+                lion_index,
+                "lion_id"
+            ] = new_id
+
+            known_lions.loc[
+                lion_index,
+                "lion_name"
+            ] = new_name
+
+            known_lions.loc[
+                lion_index,
+                "sex"
+            ] = new_sex
+
+            known_lions.loc[
+                lion_index,
+                "age"
+            ] = new_age
+
+            known_lions.loc[
+                lion_index,
+                "general_description"
+            ] = new_description
+
+            known_lions.loc[
+                lion_index,
+                "whisker_pattern_description"
+            ] = new_whiskers
+
+            lion_folder = row.get(
+                "all_reference_images_folder",
+                ""
+            )
+
+            if uploaded_photos:
+
+                os.makedirs(
+                    lion_folder,
+                    exist_ok=True
+                )
+
+                for photo in uploaded_photos:
+
+                    save_path = os.path.join(
+                        lion_folder,
+                        photo.name
+                    )
+
+                    with open(
+                        save_path,
+                        "wb"
+                    ) as f:
+                        f.write(
+                            photo.getbuffer()
+                        )
+
+            save_known_lions(
+                known_lions
+            )
+
+            st.success(
+                f"{new_name} updated successfully."
+            )
+
+            st.info(
+                "Refresh or switch pages to view updates."
+            )
 
 elif page == "Data Dashboard":
     page_band("Data Dashboard", "Overview of known lions, submitted sightings, and sighting archive data.")
