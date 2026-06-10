@@ -74,7 +74,7 @@ KNOWN_COLUMNS = [
     "lion_id",
     "lion_name",
     "sex",
-    "age,
+    "age",
     "general_description",
     "whisker_pattern_description",
     "whisker_pattern_image",
