@@ -105,16 +105,24 @@ def ensure_csv(path, cols):
 
 def load_known_lions():
     ensure_csv(KNOWN_LIONS_CSV, KNOWN_COLUMNS)
-    df = pd.read_csv(KNOWN_LIONS_CSV)
-    for col in KNOWN_COLUMNS:
-    if col not in df.columns:
-        if col == "age":
-            df[col] = "Unknown"
-        else:
-            df[col] = ""
 
-df["age"] = df["age"].fillna("Unknown")
-df.loc[df["age"].astype(str).str.strip() == "", "age"] = "Unknown"
+    df = pd.read_csv(KNOWN_LIONS_CSV)
+
+    for col in KNOWN_COLUMNS:
+        if col not in df.columns:
+            if col == "age":
+                df[col] = "Unknown"
+            else:
+                df[col] = ""
+
+    if "age" in df.columns:
+        df["age"] = df["age"].fillna("Unknown")
+        df.loc[
+            df["age"].astype(str).str.strip() == "",
+            "age"
+        ] = "Unknown"
+
+    return df[KNOWN_COLUMNS]
 
 
 def load_submissions():
