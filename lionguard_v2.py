@@ -5,6 +5,11 @@ import pandas as pd
 import streamlit as st
 from PIL import Image
 
+try:
+    from supabase import create_client
+except Exception:
+    create_client = None
+
 APP_NAME = "LionGuard ID"
 KNOWN_LIONS_CSV = "known_lions.csv"
 SUBMISSIONS_CSV = "lion_id_submissions.csv"
@@ -12,6 +17,7 @@ SIGHTINGS_FILE = "lion_sightings.xlsx"
 UPLOAD_FOLDER = "lion_uploads"
 ASSETS_FOLDER = "assets"
 KNOWN_LION_IMAGES_FOLDER = "known_lion_images"
+SUPABASE_BUCKET = "lion-images"
 
 HERO_IMAGE = os.path.join(ASSETS_FOLDER, "hero_lion.png")
 LION_CUBS_IMAGE = os.path.join(ASSETS_FOLDER, "lion_cubs.png")
@@ -71,15 +77,10 @@ section[data-testid="stSidebar"] * { color:white !important; }
 """, unsafe_allow_html=True)
 
 KNOWN_COLUMNS = [
-    "lion_id",
-    "lion_name",
-    "sex",
-    "age",
-    "general_description",
-    "whisker_pattern_description",
-    "whisker_pattern_image",
-    "reference_image",
-    "all_reference_images_folder"
+    "lion_id", "lion_name", "sex", "age",
+    "general_description", "whisker_pattern_description",
+    "whisker_pattern_image", "reference_image",
+    "all_reference_images_folder", "gallery_image_urls"
 ]
 
 SUBMISSION_COLUMNS = [
@@ -105,7 +106,6 @@ def ensure_csv(path, cols):
 
 def load_known_lions():
     ensure_csv(KNOWN_LIONS_CSV, KNOWN_COLUMNS)
-
     df = pd.read_csv(KNOWN_LIONS_CSV)
 
     for col in KNOWN_COLUMNS:
@@ -115,12 +115,8 @@ def load_known_lions():
             else:
                 df[col] = ""
 
-    if "age" in df.columns:
-        df["age"] = df["age"].fillna("Unknown")
-        df.loc[
-            df["age"].astype(str).str.strip() == "",
-            "age"
-        ] = "Unknown"
+    df["age"] = df["age"].fillna("Unknown")
+    df.loc[df["age"].astype(str).str.strip() == "", "age"] = "Unknown"
 
     return df[KNOWN_COLUMNS]
 
@@ -178,8 +174,16 @@ def is_valid_path(value):
 
 
 def show_image(path, caption=None):
-    if is_valid_path(path):
-        st.image(str(path), caption=caption, use_container_width=True)
+    if pd.isna(path):
+        st.markdown("<div class='img-placeholder'>🦁</div>", unsafe_allow_html=True)
+        return
+
+    path = str(path).strip()
+
+    if path.startswith("http://") or path.startswith("https://"):
+        st.image(path, caption=caption, use_container_width=True)
+    elif is_valid_path(path):
+        st.image(path, caption=caption, use_container_width=True)
     else:
         st.markdown("<div class='img-placeholder'>🦁</div>", unsafe_allow_html=True)
 
@@ -214,6 +218,86 @@ def safe_folder_name(name):
     name = re.sub(r"[^A-Za-z0-9 _-]", "", name)
     name = name.replace(" ", "_")
     return name or "New_Lion"
+
+
+def get_supabase_client():
+    if create_client is None:
+        return None
+
+    try:
+        url = st.secrets["SUPABASE_URL"]
+        key = st.secrets["SUPABASE_KEY"]
+        return create_client(url, key)
+    except Exception:
+        return None
+
+
+def upload_photo_to_supabase(file, lion_name):
+    supabase = get_supabase_client()
+
+    if supabase is None:
+        return None
+
+    safe_lion = safe_folder_name(lion_name)
+    original_name = os.path.splitext(file.name)[0]
+    ext = os.path.splitext(file.name)[1].lower()
+
+    if ext not in [".jpg", ".jpeg", ".png"]:
+        ext = ".jpg"
+
+    safe_file = safe_folder_name(original_name)
+    storage_path = f"{safe_lion}/{safe_file}{ext}"
+
+    try:
+        supabase.storage.from_(SUPABASE_BUCKET).upload(
+            path=storage_path,
+            file=file.getvalue(),
+            file_options={
+                "content-type": file.type or "image/jpeg",
+                "upsert": "true"
+            }
+        )
+        return supabase.storage.from_(SUPABASE_BUCKET).get_public_url(storage_path)
+
+    except Exception as e:
+        st.error(f"Supabase upload failed: {e}")
+        return None
+
+
+def split_gallery_urls(value):
+    if pd.isna(value):
+        return []
+
+    value = str(value).strip()
+    if not value:
+        return []
+
+    return [url.strip() for url in value.split("|") if url.strip()]
+
+
+def join_gallery_urls(urls):
+    clean_urls = []
+    for url in urls:
+        url = str(url).strip()
+        if url and url not in clean_urls:
+            clean_urls.append(url)
+    return "|".join(clean_urls)
+
+
+def save_uploaded_photo(file, lion_name, fallback_folder=None):
+    public_url = upload_photo_to_supabase(file, lion_name)
+
+    if public_url:
+        return public_url
+
+    if fallback_folder:
+        os.makedirs(fallback_folder, exist_ok=True)
+        save_path = os.path.join(fallback_folder, file.name)
+        with open(save_path, "wb") as f:
+            f.write(file.getbuffer())
+        return save_path
+
+    return ""
 
 
 def get_last_sighting(sightings_df, lion_name):
@@ -325,11 +409,8 @@ with st.sidebar:
     page = st.radio(
         "Navigate",
         [
-            "Home", "Known Lions", "Lion Profiles", "Identify Lion",
-            "Full Image Archive", "Submit Sighting",
-            "Review Queue", "Add New Lion",
-            "Edit Lion Profile",
-            "Data Dashboard", "About"
+            "Home", "Known Lions", "Lion Profiles", "Identify Lion", "Full Image Archive",
+            "Submit Sighting", "Review Queue", "Add New Lion", "Edit Lion Profile", "Data Dashboard", "About"
         ],
         label_visibility="collapsed"
     )
@@ -408,7 +489,11 @@ elif page == "Known Lions":
             lion_name = clean_value(row.get("lion_name", "Unknown Lion"))
             lion_id = clean_value(row.get("lion_id", ""))
             st.markdown(f"<div class='lion-name'>{lion_name}<span class='lion-id-tag'>#{lion_id}</span></div>", unsafe_allow_html=True)
-            st.markdown(f"<span class='badge'>{clean_value(row.get('sex', 'Unknown'))}</span>", unsafe_allow_html=True)
+            st.markdown(
+                f"<span class='badge'>{clean_value(row.get('sex', 'Unknown'))}</span>"
+                f"<span class='badge'>Age: {clean_value(row.get('age', 'Unknown'))}</span>",
+                unsafe_allow_html=True
+            )
 
             field("General Description", row.get("general_description", ""))
             field("Whisker Pattern", row.get("whisker_pattern_description", ""))
@@ -464,7 +549,9 @@ elif page == "Lion Profiles":
 
         st.subheader("Photo Gallery")
         folder = row.get("all_reference_images_folder", "")
-        images = get_lion_images(folder)
+        local_images = get_lion_images(folder)
+        url_images = split_gallery_urls(row.get("gallery_image_urls", ""))
+        images = local_images + url_images
 
         if not images:
             st.warning("No gallery images found for this lion.")
@@ -474,7 +561,10 @@ elif page == "Lion Profiles":
             for i, img in enumerate(images):
                 with cols[i % 3]:
                     st.image(img, use_container_width=True)
-                    st.caption(os.path.basename(img))
+                    if str(img).startswith("http"):
+                        st.caption("Supabase image")
+                    else:
+                        st.caption(os.path.basename(img))
 
 elif page == "Identify Lion":
     page_band("Identify Lion", "Enter visible features and get possible matches from the known lion database.")
@@ -561,13 +651,15 @@ elif page == "Full Image Archive":
     selected = st.selectbox("Choose a lion", lion_options)
 
     if selected == "All Lions":
-        folders = known_lions["all_reference_images_folder"].dropna().tolist()
+        selected_rows = known_lions.copy()
     else:
-        folders = known_lions[known_lions["lion_name"] == selected]["all_reference_images_folder"].dropna().tolist()
+        selected_rows = known_lions[known_lions["lion_name"] == selected].copy()
 
     all_images = []
-    for folder in folders:
+    for _, lion_row in selected_rows.iterrows():
+        folder = lion_row.get("all_reference_images_folder", "")
         all_images.extend(get_lion_images(folder))
+        all_images.extend(split_gallery_urls(lion_row.get("gallery_image_urls", "")))
 
     st.write(f"Showing {len(all_images)} image(s).")
 
@@ -621,10 +713,11 @@ elif page == "Submit Sighting":
                 existing = load_submissions()
                 submission_id = len(existing) + 1
                 img_fname = f"submission_{submission_id}_{uploaded.name}"
-                img_path = os.path.join(UPLOAD_FOLDER, img_fname)
+                fallback_path = os.path.join(UPLOAD_FOLDER, img_fname)
+                img_path = save_uploaded_photo(uploaded, "sightings", UPLOAD_FOLDER)
 
-                with open(img_path, "wb") as f:
-                    f.write(uploaded.getbuffer())
+                if not img_path:
+                    img_path = fallback_path
 
                 new_row = {
                     "submission_id": submission_id,
@@ -703,11 +796,7 @@ elif page == "Add New Lion":
         lion_name = st.text_input("Lion name", placeholder="Example: Sikiria")
         lion_id = st.text_input("Lion ID", value=suggested_next_id, placeholder="Example: LG019")
         sex = st.selectbox("Sex", ["Unknown", "Male", "Female"])
-        age = st.text_input(
-            "Age",
-            value="Unknown",
-            placeholder="Unknown, Adult, Subadult, Cub, etc."
-        )
+        age = st.text_input("Age", value="Unknown", placeholder="Unknown, Adult, Subadult, Cub, etc.")
 
         general_description = st.text_area(
             "General description",
@@ -746,22 +835,10 @@ elif page == "Add New Lion":
 
             saved_photo_paths = []
 
-            for i, photo in enumerate(reference_photos):
-                ext = os.path.splitext(photo.name)[1].lower()
-                if ext not in [".jpg", ".jpeg", ".png"]:
-                    ext = ".jpg"
-
-                if i == 0:
-                    filename = f"main{ext}"
-                else:
-                    filename = f"photo_{i}{ext}"
-
-                photo_path = os.path.join(lion_folder, filename)
-
-                with open(photo_path, "wb") as f:
-                    f.write(photo.getbuffer())
-
-                saved_photo_paths.append(photo_path)
+            for photo in reference_photos:
+                saved_path = save_uploaded_photo(photo, clean_lion_name, lion_folder)
+                if saved_path:
+                    saved_photo_paths.append(saved_path)
 
             reference_image = saved_photo_paths[0] if saved_photo_paths else ""
 
@@ -769,12 +846,13 @@ elif page == "Add New Lion":
                 "lion_id": clean_lion_id,
                 "lion_name": clean_lion_name,
                 "sex": sex,
-                "age": age,
+                "age": age.strip() if age.strip() else "Unknown",
                 "general_description": general_description,
                 "whisker_pattern_description": whisker_pattern_description,
                 "whisker_pattern_image": "",
                 "reference_image": reference_image,
                 "all_reference_images_folder": lion_folder,
+                "gallery_image_urls": join_gallery_urls(saved_photo_paths),
             }
 
             updated_lions = pd.concat([known_lions, pd.DataFrame([new_lion])], ignore_index=True)
@@ -783,185 +861,114 @@ elif page == "Add New Lion":
             st.success(f"{clean_lion_name} has been added to the known lion archive.")
             st.write(f"Photo folder created: `{lion_folder}`")
             st.info("The new lion will appear after you refresh the browser or switch pages. If it does not, stop Streamlit and run it again.")
+
 elif page == "Edit Lion Profile":
-    page_band(
-        "Edit Lion Profile",
-        "Update lion information, age, descriptions, and reference images."
-    )
+    page_band("Edit Lion Profile", "Update lion information, age, descriptions, and reference images.")
 
     lion_names = known_lions["lion_name"].dropna().tolist()
 
     if not lion_names:
-        st.warning("No lions available.")
+        st.warning("No lions available to edit.")
     else:
-        selected_lion = st.selectbox(
-            "Select lion to edit",
-            lion_names
-        )
+        selected_lion = st.selectbox("Select lion to edit", lion_names)
 
-        lion_index = known_lions[
-            known_lions["lion_name"] == selected_lion
-        ].index[0]
-
+        lion_index = known_lions[known_lions["lion_name"] == selected_lion].index[0]
         row = known_lions.loc[lion_index]
 
         st.subheader("Current Profile")
-
-        c1, c2 = st.columns([1, 2])
+        c1, c2 = st.columns([1, 2], gap="large")
 
         with c1:
-            show_image(
-                row.get("reference_image", ""),
-                caption="Current Reference Image"
-            )
+            show_image(row.get("reference_image", ""), caption="Current Reference Image")
 
         with c2:
             field("Lion ID", row.get("lion_id", ""))
             field("Name", row.get("lion_name", ""))
             field("Sex", row.get("sex", ""))
             field("Age", row.get("age", "Unknown"))
+            field("General Description", row.get("general_description", ""))
+            field("Whisker Pattern", row.get("whisker_pattern_description", ""))
 
         st.divider()
-
         st.subheader("Edit Profile")
 
-        with st.form("edit_profile_form"):
-
-            new_id = st.text_input(
-                "Lion ID",
-                value=str(row.get("lion_id", ""))
-            )
-
-            new_name = st.text_input(
-                "Lion Name",
-                value=str(row.get("lion_name", ""))
-            )
+        with st.form("edit_lion_profile_form"):
+            new_id = st.text_input("Lion ID", value=str(row.get("lion_id", "")))
+            new_name = st.text_input("Lion Name", value=str(row.get("lion_name", "")))
 
             sex_options = ["Unknown", "Male", "Female"]
-
-            current_sex = str(
-                row.get("sex", "Unknown")
-            )
-
-            sex_index = (
-                sex_options.index(current_sex)
-                if current_sex in sex_options
-                else 0
-            )
-
-            new_sex = st.selectbox(
-                "Sex",
-                sex_options,
-                index=sex_index
-            )
+            current_sex = str(row.get("sex", "Unknown"))
+            sex_index = sex_options.index(current_sex) if current_sex in sex_options else 0
+            new_sex = st.selectbox("Sex", sex_options, index=sex_index)
 
             new_age = st.text_input(
                 "Age",
-                value=str(
-                    row.get("age", "Unknown")
-                )
+                value=str(row.get("age", "Unknown") or "Unknown"),
+                placeholder="Unknown, Adult, Subadult, Cub, 5 years, etc."
             )
 
             new_description = st.text_area(
                 "General Description",
-                value=str(
-                    row.get(
-                        "general_description",
-                        ""
-                    )
-                )
+                value=str(row.get("general_description", ""))
             )
 
             new_whiskers = st.text_area(
                 "Whisker Pattern Description",
-                value=str(
-                    row.get(
-                        "whisker_pattern_description",
-                        ""
-                    )
-                )
+                value=str(row.get("whisker_pattern_description", ""))
             )
 
             uploaded_photos = st.file_uploader(
-                "Add New Photos",
+                "Add new reference/gallery photos",
                 type=["jpg", "jpeg", "png"],
                 accept_multiple_files=True
             )
 
-            save_changes = st.form_submit_button(
-                "Save Profile Changes"
+            make_first_uploaded_reference = st.checkbox(
+                "Use first uploaded photo as the main reference image",
+                value=False
             )
+
+            save_changes = st.form_submit_button("Save Profile Changes")
 
         if save_changes:
+            clean_name = new_name.strip()
+            clean_id = new_id.strip()
 
-            known_lions.loc[
-                lion_index,
-                "lion_id"
-            ] = new_id
+            if not clean_name:
+                st.error("Lion name cannot be blank.")
+            elif not clean_id:
+                st.error("Lion ID cannot be blank.")
+            else:
+                lion_folder = str(row.get("all_reference_images_folder", "")).strip()
+                if not lion_folder:
+                    lion_folder = os.path.join(KNOWN_LION_IMAGES_FOLDER, safe_folder_name(clean_name))
 
-            known_lions.loc[
-                lion_index,
-                "lion_name"
-            ] = new_name
-
-            known_lions.loc[
-                lion_index,
-                "sex"
-            ] = new_sex
-
-            known_lions.loc[
-                lion_index,
-                "age"
-            ] = new_age
-
-            known_lions.loc[
-                lion_index,
-                "general_description"
-            ] = new_description
-
-            known_lions.loc[
-                lion_index,
-                "whisker_pattern_description"
-            ] = new_whiskers
-
-            lion_folder = row.get(
-                "all_reference_images_folder",
-                ""
-            )
-
-            if uploaded_photos:
-
-                os.makedirs(
-                    lion_folder,
-                    exist_ok=True
-                )
+                existing_urls = split_gallery_urls(row.get("gallery_image_urls", ""))
+                new_urls = []
 
                 for photo in uploaded_photos:
+                    saved_path = save_uploaded_photo(photo, clean_name, lion_folder)
+                    if saved_path:
+                        new_urls.append(saved_path)
 
-                    save_path = os.path.join(
-                        lion_folder,
-                        photo.name
-                    )
+                all_gallery_urls = existing_urls + new_urls
 
-                    with open(
-                        save_path,
-                        "wb"
-                    ) as f:
-                        f.write(
-                            photo.getbuffer()
-                        )
+                known_lions.loc[lion_index, "lion_id"] = clean_id
+                known_lions.loc[lion_index, "lion_name"] = clean_name
+                known_lions.loc[lion_index, "sex"] = new_sex
+                known_lions.loc[lion_index, "age"] = new_age.strip() if new_age.strip() else "Unknown"
+                known_lions.loc[lion_index, "general_description"] = new_description
+                known_lions.loc[lion_index, "whisker_pattern_description"] = new_whiskers
+                known_lions.loc[lion_index, "all_reference_images_folder"] = lion_folder
+                known_lions.loc[lion_index, "gallery_image_urls"] = join_gallery_urls(all_gallery_urls)
 
-            save_known_lions(
-                known_lions
-            )
+                if new_urls and make_first_uploaded_reference:
+                    known_lions.loc[lion_index, "reference_image"] = new_urls[0]
 
-            st.success(
-                f"{new_name} updated successfully."
-            )
+                save_known_lions(known_lions)
 
-            st.info(
-                "Refresh or switch pages to view updates."
-            )
+                st.success(f"{clean_name}'s profile has been updated.")
+                st.info("Refresh or switch pages to see the updated profile.")
 
 elif page == "Data Dashboard":
     page_band("Data Dashboard", "Overview of known lions, submitted sightings, and sighting archive data.")
@@ -1008,6 +1015,6 @@ elif page == "About":
 
 st.markdown("""
 <div class="site-footer">
-    <span>LionGuard ID</span> · Ewaso Lions · Prototype V7 · Human-in-the-loop
+    <span>LionGuard ID</span> · Ewaso Lions · Prototype V8 · Human-in-the-loop
 </div>
 """, unsafe_allow_html=True)
