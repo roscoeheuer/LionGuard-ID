@@ -234,6 +234,7 @@ def upload_photo_to_supabase(file, lion_name):
     supabase = get_supabase_client()
 
     if supabase is None:
+        st.warning("Supabase client is not connected. Check Streamlit secrets and supabase import.")
         return None
 
     safe_lion = safe_folder_name(lion_name)
@@ -247,7 +248,9 @@ def upload_photo_to_supabase(file, lion_name):
     storage_path = f"{safe_lion}/{safe_file}{ext}"
 
     try:
-        supabase.storage.from_(SUPABASE_BUCKET).upload(
+        st.info(f"Uploading to Supabase path: {storage_path}")
+
+        response = supabase.storage.from_(SUPABASE_BUCKET).upload(
             path=storage_path,
             file=file.getvalue(),
             file_options={
@@ -256,18 +259,26 @@ def upload_photo_to_supabase(file, lion_name):
             }
         )
 
-        return supabase.storage.from_(SUPABASE_BUCKET).get_public_url(storage_path)
+        st.write("Supabase upload response:", response)
+
+        public_url = supabase.storage.from_(SUPABASE_BUCKET).get_public_url(storage_path)
+
+        st.success("Photo uploaded to Supabase.")
+        st.write("Public URL:", public_url)
+
+        return public_url
 
     except Exception as e:
         st.error(f"Supabase upload failed: {e}")
         return None
-
 
 def save_uploaded_photo(file, lion_name, fallback_folder=None):
     public_url = upload_photo_to_supabase(file, lion_name)
 
     if public_url:
         return public_url
+
+    st.warning("Using local fallback photo storage instead of Supabase.")
 
     if fallback_folder:
         os.makedirs(fallback_folder, exist_ok=True)
