@@ -5,11 +5,6 @@ import pandas as pd
 import streamlit as st
 from PIL import Image
 
-try:
-    from supabase import create_client
-except Exception:
-    create_client = None
-
 APP_NAME = "LionGuard ID"
 KNOWN_LIONS_CSV = "known_lions.csv"
 SUBMISSIONS_CSV = "lion_id_submissions.csv"
@@ -17,7 +12,6 @@ SIGHTINGS_FILE = "lion_sightings.xlsx"
 UPLOAD_FOLDER = "lion_uploads"
 ASSETS_FOLDER = "assets"
 KNOWN_LION_IMAGES_FOLDER = "known_lion_images"
-SUPABASE_BUCKET = "lion-images"
 
 HERO_IMAGE = os.path.join(ASSETS_FOLDER, "hero_lion.png")
 LION_CUBS_IMAGE = os.path.join(ASSETS_FOLDER, "lion_cubs.png")
@@ -219,51 +213,6 @@ def safe_folder_name(name):
     name = name.replace(" ", "_")
     return name or "New_Lion"
 
-
-def get_supabase_client():
-    if create_client is None:
-        return None
-
-    try:
-        url = st.secrets["SUPABASE_URL"]
-        key = st.secrets["SUPABASE_KEY"]
-        return create_client(url, key)
-    except Exception:
-        return None
-
-
-def upload_photo_to_supabase(file, lion_name):
-    supabase = get_supabase_client()
-
-    if supabase is None:
-        return None
-
-    safe_lion = safe_folder_name(lion_name)
-    original_name = os.path.splitext(file.name)[0]
-    ext = os.path.splitext(file.name)[1].lower()
-
-    if ext not in [".jpg", ".jpeg", ".png"]:
-        ext = ".jpg"
-
-    safe_file = safe_folder_name(original_name)
-    storage_path = f"{safe_lion}/{safe_file}{ext}"
-
-    try:
-        supabase.storage.from_(SUPABASE_BUCKET).upload(
-            path=storage_path,
-            file=file.getvalue(),
-            file_options={
-                "content-type": file.type or "image/jpeg",
-                "upsert": "true"
-            }
-        )
-        return supabase.storage.from_(SUPABASE_BUCKET).get_public_url(storage_path)
-
-    except Exception as e:
-        st.error(f"Supabase upload failed: {e}")
-        return None
-
-
 def split_gallery_urls(value):
     if pd.isna(value):
         return []
@@ -285,19 +234,23 @@ def join_gallery_urls(urls):
 
 
 def save_uploaded_photo(file, lion_name, fallback_folder=None):
-    public_url = upload_photo_to_supabase(file, lion_name)
+    if not fallback_folder:
+        fallback_folder = os.path.join(KNOWN_LION_IMAGES_FOLDER, safe_folder_name(lion_name))
 
-    if public_url:
-        return public_url
+    os.makedirs(fallback_folder, exist_ok=True)
 
-    if fallback_folder:
-        os.makedirs(fallback_folder, exist_ok=True)
-        save_path = os.path.join(fallback_folder, file.name)
-        with open(save_path, "wb") as f:
-            f.write(file.getbuffer())
-        return save_path
+    safe_file_name = safe_folder_name(os.path.splitext(file.name)[0])
+    ext = os.path.splitext(file.name)[1].lower()
 
-    return ""
+    if ext not in [".jpg", ".jpeg", ".png"]:
+        ext = ".jpg"
+
+    save_path = os.path.join(fallback_folder, f"{safe_file_name}{ext}")
+
+    with open(save_path, "wb") as f:
+        f.write(file.getbuffer())
+
+    return save_path
 
 
 def get_last_sighting(sightings_df, lion_name):
